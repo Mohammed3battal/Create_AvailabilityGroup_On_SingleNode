@@ -1,0 +1,39 @@
+-- Ensure the HADR endpoint is running
+IF (SELECT state FROM sys.endpoints WHERE name = N'Hadr_endpoint') <> 0
+BEGIN
+    ALTER ENDPOINT [Hadr_endpoint] STATE = STARTED;
+END
+
+-- Ensure the AlwaysOn_health session starts with SQL Server
+IF EXISTS(SELECT * FROM sys.server_event_sessions WHERE name = 'AlwaysOn_health')
+BEGIN
+    ALTER EVENT SESSION [AlwaysOn_health] ON SERVER WITH (STARTUP_STATE = ON);
+END
+
+-- Start the AlwaysOn_health session if not already running
+IF NOT EXISTS(SELECT * FROM sys.dm_xe_sessions WHERE name = 'AlwaysOn_health')
+BEGIN
+    ALTER EVENT SESSION [AlwaysOn_health] ON SERVER STATE = START;
+END
+GO
+
+-- Create the Availability Group on a single node
+CREATE AVAILABILITY GROUP [AG_SingleNode]
+WITH (
+    AUTOMATED_BACKUP_PREFERENCE = PRIMARY,
+    DB_FAILOVER = OFF,
+    DTC_SUPPORT = NONE,
+    REQUIRED_SYNCHRONIZED_SECONDARIES_TO_COMMIT = 0
+)
+FOR DATABASE [YourDatabaseName] -- Replace with your database
+REPLICA ON 
+    N'YourServerName' -- Replace with current server
+    WITH (
+        ENDPOINT_URL = N'TCP://YourServerName.YourDomain:5022', 
+        FAILOVER_MODE = MANUAL, 
+        AVAILABILITY_MODE = ASYNCHRONOUS_COMMIT, 
+        BACKUP_PRIORITY = 50, 
+        SEEDING_MODE = AUTOMATIC, 
+        SECONDARY_ROLE(ALLOW_CONNECTIONS = NO)
+    );
+GO
